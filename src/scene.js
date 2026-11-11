@@ -240,6 +240,23 @@ export function initScene(userName){
     overviewPos.copy(camera.position);
   }
 
+  /** If furniture stands between the camera and what it's looking at (the sofa in front
+      of the TV, on a narrow phone that has to stand far back), look over it instead. */
+  const occluder = new THREE.Raycaster();
+  function clearView(pos, target){
+    if (!roomModel) return;
+    for (let tries = 0; tries < 10; tries++){
+      const dir = pos.clone().sub(target);
+      const d = dir.length();
+      if (d < 0.6) return;
+      dir.normalize();
+      occluder.set(target.clone().addScaledVector(dir, 0.45), dir);   // start just in front of the thing itself
+      occluder.far = d - 0.45;
+      if (!occluder.intersectObject(roomModel, true).some(h => h.object.visible)) return;
+      pos.y += 0.35;
+    }
+  }
+
   function focusTo(key, pos, target, after){
     // Remember where you were standing the moment you walk up to something,
     // so "back" returns you there. (This used to be re-saved every frame, which
@@ -253,6 +270,7 @@ export function initScene(userName){
     controls.enabled = false;
     pos = pos.clone(); target = target.clone();
     liftForPanels(pos, target);
+    clearView(pos, target);
     camPosGoal.copy(pos);
     camTargetGoal.copy(target);
     document.getElementById('back-btn').classList.add('show');
@@ -272,6 +290,14 @@ export function initScene(userName){
     if (!was) return;
     focused = null;
     returning = true;                // controls come back once we've arrived
+    // back to where you were standing; but if that was right up against something
+    // (easy after pinching on a phone), back to the whole room instead
+    const designed = new THREE.Vector3(...ROOM.camera.pos).distanceTo(roomCenter);
+    if (overviewPos.distanceTo(roomCenter) < designed * 0.55){
+      const dir = new THREE.Vector3(...ROOM.camera.pos).sub(roomCenter).normalize();
+      overviewTarget.copy(roomCenter);
+      overviewPos.copy(roomCenter).addScaledVector(dir, Math.max(designed, fitRoomDistance(dir)));
+    }
     camPosGoal.copy(overviewPos);
     camTargetGoal.copy(overviewTarget);
     document.getElementById('back-btn').classList.remove('show');
