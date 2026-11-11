@@ -183,6 +183,12 @@ export function initScene(userName){
   const overviewTarget = new THREE.Vector3(0, 2, 0);
   const backHooks = [];
   const frameHooks = [];
+  // one smooth glide at a time: from where the camera is to the goal, eased in and out
+  let glide = null;
+  function startGlide(){
+    const far = Math.max(camera.position.distanceTo(camPosGoal), controls.target.distanceTo(camTargetGoal));
+    glide = { pos: camera.position.clone(), target: controls.target.clone(), t: 0, dur: Math.min(1.7, 0.95 + far * 0.07) };
+  }
 
   function computeFocus(objects){
     const box = new THREE.Box3();
@@ -273,6 +279,7 @@ export function initScene(userName){
     clearView(pos, target);
     camPosGoal.copy(pos);
     camTargetGoal.copy(target);
+    startGlide();
     document.getElementById('back-btn').classList.add('show');
     document.body.classList.add('room-focused');
     hideTip();
@@ -300,6 +307,7 @@ export function initScene(userName){
     }
     camPosGoal.copy(overviewPos);
     camTargetGoal.copy(overviewTarget);
+    startGlide();
     document.getElementById('back-btn').classList.remove('show');
     document.body.classList.remove('room-focused');
     clearSubtitle();
@@ -698,16 +706,27 @@ export function initScene(userName){
     // sitting at a computer covers the whole room: don't spend the GPU on it
     if (document.body.classList.contains('in-pc')) return;
     const t = clock.elapsedTime;
-    controls.update();
 
     if (focused || returning){
-      const k = 1 - Math.exp(-dt * 2.4);
-      camera.position.lerp(camPosGoal, k);
-      controls.target.lerp(camTargetGoal, k);
-      if (returning && camera.position.distanceTo(camPosGoal) < 0.02 && controls.target.distanceTo(camTargetGoal) < 0.02){
+      // The glide owns the camera here. (The orbit controls used to keep running too,
+      // pushing the camera back to their minimum distance and angle every frame while
+      // the glide pulled it in — that tug-of-war was the zigzag.)
+      if (!glide) startGlide();
+      glide.t += dt;
+      const u = Math.min(1, glide.t / glide.dur);
+      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;      // ease in, ease out
+      camera.position.lerpVectors(glide.pos, camPosGoal, e);
+      controls.target.lerpVectors(glide.target, camTargetGoal, e);
+      camera.lookAt(controls.target);
+      if (returning && u >= 1){
         returning = false;
+        glide = null;
         controls.enabled = true;
+        controls.update();
       }
+    } else {
+      glide = null;
+      controls.update();
     }
 
     if (tT < 1){
