@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Our Room</title>
+<meta name="description" content="Our room — just the two of us.">
+<meta name="theme-color" content="#2a1408">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Our Room">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,800;1,400&family=Special+Elite&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/src/style.css">
+<link rel="stylesheet" href="/src/responsive.css">
+</head>
+<body>
+
+  <!-- ============ SCREEN 1: GATE ============ -->
+  <section id="screen-gate" class="screen active">
+    <div class="gate-grain"></div>
+    <div class="gate-inner">
+      <p class="eyebrow">ours only</p>
+      <h1 class="gate-title">
+        <span class="l1">A ROOM</span>
+        <span class="l2">THAT WE</span>
+        <span class="l3">KEEP</span>
+      </h1>
+      <p class="gate-sub">Everything we've been, shelved and waiting.</p>
+      <button id="enter-btn" class="gate-btn">
+        <span class="gate-btn-icon">&#9751;</span>
+        <span>Enter</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 2: PIN ============ -->
+  <section id="screen-pin" class="screen">
+    <div class="gate-grain"></div>
+    <div class="pin-inner">
+      <p class="eyebrow">only the two of us know this</p>
+      <h2 class="pin-title">The day we met</h2>
+      <div id="pin-boxes" class="pin-boxes">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="0" autocomplete="off">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="1" autocomplete="off">
+        <span class="pin-sep">/</span>
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="2" autocomplete="off">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="3" autocomplete="off">
+        <span class="pin-sep">/</span>
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="4" autocomplete="off">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="5" autocomplete="off">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="6" autocomplete="off">
+        <input type="password" inputmode="numeric" maxlength="1" class="pin-box" data-i="7" autocomplete="off">
+      </div>
+      <p id="pin-error" class="pin-error"></p>
+      <button id="pin-back" class="text-btn">&larr; back</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 2b: SIGN IN (Supabase only) ============ -->
+  <section id="screen-auth" class="screen">
+    <div class="gate-grain"></div>
+    <div class="pin-inner">
+      <p class="eyebrow">so it follows you everywhere</p>
+      <h2 class="pin-title">Sign in</h2>
+      <p class="auth-blurb">Only the two of us have a key.</p>
+      <input type="email" id="auth-email" class="ui-input auth-input" placeholder="your email" autocomplete="username">
+      <div class="auth-pass-wrap">
+        <input type="password" id="auth-pass" class="ui-input auth-input" placeholder="password" autocomplete="current-password">
+        <button type="button" id="auth-eye" class="auth-eye" title="Show password" aria-label="Show password">
+          <svg class="eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+          <svg class="eye-shut" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.9 10.9 0 0 1 12 5c6.4 0 10 7 10 7a17.7 17.7 0 0 1-3.2 4.2M6.6 6.6C3.9 8.3 2 12 2 12s3.6 7 10 7a10 10 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+        </button>
+      </div>
+      <button id="auth-send" class="gate-btn">Come in</button>
+      <p id="auth-msg" class="auth-msg"></p>
+      <p id="auth-note" class="auth-note">checking connection…</p>
+      <p id="auth-fix" class="auth-fix"></p>
+      <button id="auth-magic" class="text-btn">email me a link instead</button>
+      <button id="auth-skip" class="text-btn">continue without syncing</button>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3: WHO ============ -->
+  <section id="screen-who" class="screen">
+    <div class="gate-grain"></div>
+    <div class="who-inner">
+      <p class="eyebrow">before you go in</p>
+      <h2 class="pin-title">Who's this?</h2>
+      <div class="who-buttons">
+        <button class="who-btn" data-name="Andrei"><span class="who-initial">A</span><span>Andrei</span></button>
+        <button class="who-btn" data-name="Cherryl"><span class="who-initial">C</span><span>Cherryl</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4: 3D ROOM ============ -->
+  <section id="screen-room" class="screen">
+    <div id="canvas-wrap"></div>
+
+    <div id="loading-room">
+      <div class="loading-text">Setting up the room&hellip;</div>
+      <div class="load-bar"><div class="load-bar-fill" id="room-bar"></div></div>
+      <div class="load-pct" id="room-pct">0%</div>
+      <div class="loading-here" id="loading-here"></div>
+    </div>
+
+    <div id="subtitle"></div>
+
+    <div id="sync-warning" class="sync-warning">
+      <span id="sync-warning-text"></span>
+      <button id="sync-warning-fix">Sign in</button>
+    </div>
+
+    <button id="back-btn">&larr; Back to room</button>
+    <div id="hover-tip"><span id="hover-tip-label"></span><span id="hover-tip-sub"></span></div>
+    <div id="mode-badge" title="Follows the time in Manila — click to switch"><span class="mode-icon">&#9728;</span> Morning</div>
+    <div id="presence-chip" class="presence-chip"><span class="pc-dot"></span><span id="presence-chip-text"></span></div>
+    <div id="hint">Drag to look around &middot; Click an object</div>
+    <script>
+      // fingers, not a mouse: say so in the hint
+      if (matchMedia('(pointer: coarse)').matches) document.getElementById('hint').textContent = 'Drag to look · pinch to zoom · tap anything';
+    </script>
+
+    <div id="guide-card">
+      <p class="guide-eyebrow">how this works</p>
+      <ul class="guide-list">
+        <li><span class="gd">&#128218;</span><div><b>The shelf</b><i>a book for every year</i></div></li>
+        <li><span class="gd">&#128421;</span><div><b>Two computers</b><i>left is Che&rsquo;s, right is Andrei&rsquo;s</i></div></li>
+        <li><span class="gd">&#127870;</span><div><b>The bottle</b><i>leave a note for each other</i></div></li>
+        <li><span class="gd">&#128250;</span><div><b>The TV</b><i>our photos and videos</i></div></li>
+        <li><span class="gd">&#127925;</span><div><b>The speakers</b><i>our songs</i></div></li>
+        <li><span class="gd">&#128444;</span><div><b>The frames</b><i>put our photos on the wall</i></div></li>
+        <li><span class="gd">&#128274;</span><div><b>The little box</b><i>letters that open years from now</i></div></li>
+        <li><span class="gd">&#129407;</span><div><b>The slippers</b><i>show who&rsquo;s home right now</i></div></li>
+        <li><span class="gd">&#128368;</span><div><b>The clock</b><i>day and night follow Manila time</i></div></li>
+        <li><span class="gd">&#128161;</span><div><b>The wall lamps</b><i>the light switch &mdash; for both of you</i></div></li>
+        <li><span class="gd">&#128008;</span><div><b>The cat</b><i>open the box to adopt &mdash; pet it, feed it, tap its bed</i></div></li>
+        <li><span class="gd">&#128682;</span><div><b>The door</b><i>lock up and leave</i></div></li>
+        <li><span class="gd">?</span><div><b>The ? button</b><i>top left: shows everything you can touch</i></div></li>
+      </ul>
+      <button id="guide-dismiss">got it</button>
+    </div>
+
+    <div id="attribution">
+      <span class="attr-long">Room model: "Isometric room, house, game-ready, low poly." by gbarzu &mdash; CC-BY-4.0, via Sketchfab &middot; Cat model by WildMesh 3D (free models)</span>
+      <span class="attr-short">Room by gbarzu &middot; CC-BY-4.0 &middot; Cat by WildMesh 3D</span>
+    </div>
+
+    <!-- ---- BOOKSHELF ---- -->
+    <div id="bookshelf-overlay" class="overlay-screen shelf-screen">
+      <div class="shelf-vignette"></div>
+      <div class="shelf-head">
+        <div>
+          <p class="eyebrow dark">our shelf</p>
+          <h2 class="shelf-title">Every year, a book.</h2>
+        </div>
+        <button id="bookshelf-close" class="ghost-btn">&times; Close</button>
+      </div>
+
+      <div class="shelf-stage" id="shelf-stage">
+        <div id="bookcase-mount"></div>
+        <p class="shelf3d-empty" hidden>Nothing here yet — start your first year below.</p>
+      </div>
+      <div id="shelf-tip" class="shelf-tip"></div>
+      <div id="shelf-years" class="shelf-years" aria-label="Open a year"></div>
+
+      <div class="shelf-foot">
+        <button id="shelf-back" class="ghost-btn light">&larr; Back to the room</button>
+        <button id="add-book-btn" class="ghost-btn light">+ Start a new year</button>
+      </div>
+    </div>
+
+    <!-- ---- BOOK OPENING TRANSITION ---- -->
+    <div id="book-open-stage" class="book-open-stage">
+      <div class="boc-wrap" id="boc-wrap">
+        <div class="boc-pages"></div>
+        <div class="boc-cover" id="boc-cover"><span class="boc-year"></span></div>
+      </div>
+    </div>
+
+    <!-- ---- 3D BOOK COVER ---- -->
+    <div id="cover-overlay" class="overlay-screen cover-screen">
+      <div class="cover-head">
+        <div>
+          <p class="eyebrow dark">the book</p>
+          <h2 class="shelf-title" id="cover-heading">Turn it over.</h2>
+        </div>
+        <div class="cover-head-actions">
+          <button id="cover-edit-toggle" class="ghost-btn light">&#9998; Edit</button>
+          <button id="cover-back" class="ghost-btn light">&larr; Shelf</button>
+        </div>
+      </div>
+
+      <!-- viewing mode -->
+      <div class="cover-main">
+        <div class="cover-stage" id="cover-stage">
+          <div class="cover-book" id="cover-book">
+            <!-- back board -->
+            <div class="bk-face bk-back" id="cover-back-face">
+              <div class="bk-skin" id="cover-back-skin"></div>
+              <span class="cb-note" id="cb-note"></span>
+            </div>
+
+            <!-- spine, hinged side -->
+            <div class="bk-face bk-spine" id="cover-spine">
+              <div class="bk-skin" id="cover-spine-skin"></div>
+              <div class="cs-fallback" id="cs-fallback"><span class="cs-year" id="cs-year"></span></div>
+            </div>
+
+            <!-- the block of pages: fore edge, head and tail -->
+            <div class="bk-face bk-fore"></div>
+            <div class="bk-face bk-head"></div>
+            <div class="bk-face bk-tail"></div>
+
+            <!-- the top sheet, so the cover swinging open reveals paper, not a hole -->
+            <div class="bk-face bk-leaf"></div>
+
+            <!-- front board, swings open on the spine -->
+            <div class="bk-face bk-front" id="cover-front">
+              <div class="bk-skin" id="cover-front-skin"></div>
+              <div class="cf-fallback" id="cf-fallback">
+                <span class="cf-emblem" id="cf-emblem"></span>
+                <span class="cf-title" id="cf-title"></span>
+                <span class="cf-rule"></span>
+                <span class="cf-subtitle" id="cf-subtitle"></span>
+              </div>
+              <span class="cf-signature" id="cf-signature"></span>
+              <span class="bk-hinge"></span>
+            </div>
+          </div>
+
+          <div class="cover-shadow"></div>
+          <p class="cover-hint">drag to turn it over &middot; tap to open</p>
+          <button id="cover-open-main" class="tool-btn primary cover-open-main">Open the book &rarr;</button>
+        </div>
+
+        <aside class="cover-panel">
+          <p class="tray-label">Cover</p>
+          <div class="cov-group">
+            <span class="cov-label">Material</span>
+            <div class="cov-row" id="cover-materials"></div>
+          </div>
+          <div class="cov-group">
+            <span class="cov-label">Finish</span>
+            <div class="cov-row" id="cover-textures"></div>
+          </div>
+          <div class="cov-group">
+            <span class="cov-label">Words</span>
+            <button class="cov-field" id="edit-title"><b>Title</b><span class="cov-field-val"></span></button>
+            <button class="cov-field" id="edit-subtitle"><b>Subtitle</b><span class="cov-field-val"></span></button>
+            <button class="cov-field" id="edit-signature"><b>Signed</b><span class="cov-field-val"></span></button>
+          </div>
+          <div class="cov-group">
+            <span class="cov-label">Decorate</span>
+            <button class="cov-field wide" id="cover-edit-front">Design the front</button>
+            <button class="cov-field wide" id="cover-edit-spine">Design the spine</button>
+          </div>
+          <div class="cov-group">
+            <span class="cov-label">Storage</span>
+            <div class="storage-bar"><div class="storage-fill" id="storage-fill"></div></div>
+            <span class="storage-note" id="storage-note"></span>
+          </div>
+          <div class="cov-actions">
+            <button id="cover-reset" class="ghost-btn light">Recentre</button>
+            <button id="cover-open" class="tool-btn primary big">Open the book &rarr;</button>
+          </div>
+        </aside>
+      </div>
+
+      <!-- face-editing mode -->
+      <div class="cover-edit">
+        <div class="ce-bar">
+          <div class="ce-titles">
+            <h3 id="ce-heading"></h3>
+            <span id="ce-sub"></span>
+          </div>
+          <div class="ce-tools">
+            <button id="ce-photo" class="tool-btn">&#128247; Photo</button>
+            <button id="ce-note" class="tool-btn">&#9998; Text</button>
+            <button id="ce-sticker" class="tool-btn">&#10084; Sticker</button>
+            <button id="ce-tape" class="tool-btn">&#9866; Tape</button>
+            <button id="ce-paper" class="tool-btn">&#9634; Backing</button>
+            <button id="ce-delete" class="tool-btn danger">Delete</button>
+            <button id="ce-done" class="tool-btn primary">Done</button>
+          </div>
+        </div>
+        <div class="ce-canvas-area">
+          <div class="ce-wrap" id="ce-front-wrap"><div class="ce-canvas" id="ce-front-canvas"></div></div>
+          <div class="ce-wrap" id="ce-spine-wrap"><div class="ce-canvas narrow" id="ce-spine-canvas"></div></div>
+        </div>
+        <div id="ce-sticker-tray" class="tray ce-tray"></div>
+        <div id="ce-paper-tray" class="tray ce-tray"></div>
+        <input type="file" id="ce-photo-input" accept="image/*" multiple style="display:none">
+      </div>
+    </div>
+
+    <!-- ---- SCRAPBOOK EDITOR ---- -->
+    <div id="editor-overlay" class="overlay-screen editor-screen">
+      <div class="editor-topbar">
+        <button id="editor-back" class="ghost-btn">&larr; Shelf</button>
+        <button id="pages-btn" class="ghost-btn pages-btn" title="Pages">&#9776; Pages</button>
+        <div class="editor-title-wrap">
+          <h2 id="editor-title"></h2>
+          <span id="editor-page-label"></span>
+        </div>
+        <div class="editor-actions">
+          <button id="lock-toggle" class="tool-btn lock-btn">&#128274; Locked</button>
+          <button id="add-photo-btn" class="tool-btn">&#128247; Photo</button>
+          <button id="add-text-btn" class="tool-btn">&#9998; Note</button>
+          <button id="add-sticker-btn" class="tool-btn">&#10084; Sticker</button>
+          <button id="add-tape-btn" class="tool-btn">&#9866; Tape</button>
+          <button id="template-btn" class="tool-btn">&#9638; Layout</button>
+          <button id="paper-btn" class="tool-btn">&#9634; Paper</button>
+          <button id="front-btn" class="tool-btn">&#8593; Front</button>
+          <button id="back-btn-layer" class="tool-btn">&#8595; Back</button>
+          <button id="delete-el-btn" class="tool-btn danger" style="display:none">Delete</button>
+          <button id="save-page-btn" class="tool-btn primary">Save</button>
+        </div>
+      </div>
+
+      <div class="editor-body">
+        <aside class="page-rail">
+          <div class="rail-head">Pages</div>
+          <div id="page-list" class="page-list"></div>
+          <button id="add-page-btn" class="rail-add">+ Add page</button>
+        </aside>
+
+        <div class="editor-stage">
+          <button class="flip-btn flip-prev" id="flip-prev" title="Previous spread">&#8249;</button>
+
+          <div class="book-body">
+            <div class="book-cover-edge left"></div>
+
+            <div class="spread">
+              <div class="page-side" id="page-left-wrap">
+                <div class="page-host" id="page-left"></div>
+                <div class="flip-overlay" id="flip-overlay-left"></div>
+                <span class="page-label" id="label-left"></span>
+              </div>
+
+              <div class="binding">
+                <div class="binding-shadow"></div>
+                <div class="rings" id="rings"></div>
+              </div>
+
+              <div class="page-side" id="page-right-wrap">
+                <div class="page-host" id="page-right"></div>
+                <div class="flip-overlay" id="flip-overlay-right"></div>
+                <span class="page-label" id="label-right"></span>
+              </div>
+            </div>
+
+            <div class="book-cover-edge right"></div>
+          </div>
+
+          <button class="flip-btn flip-next" id="flip-next" title="Next spread">&#8250;</button>
+        </div>
+        <div class="spread-counter" id="spread-counter"></div>
+      </div>
+
+      <!-- popovers -->
+      <div id="sticker-tray" class="tray"></div>
+      <div id="paper-tray" class="tray"></div>
+
+      <input type="file" id="photo-input" accept="image/*" multiple style="display:none">
+    </div>
+
+    <!-- ---- THE TWO COMPUTERS (built by src/pc/os.js) ---- -->
+    <div id="desktop-overlay" class="overlay-screen desktop-screen"></div>
+  </section>
+
+  <div id="leave-fade"><p>see you soon</p></div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
