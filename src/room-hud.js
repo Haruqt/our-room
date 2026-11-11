@@ -7,6 +7,7 @@
  *   ⚙   settings — notifications, sound effects, install as an app, our cat, the guide
  */
 import { openTrophies, count, loadAchievements } from './achievements.js';
+import { viewSize } from './view-size.js';
 import { openPanel, closePanel } from './room-panel.js';
 import { pushStatus, enablePush, disablePush, isIOS, isInstalled } from './push.js';
 import { soundOn, setSoundOn } from './sfx.js';
@@ -89,7 +90,7 @@ export function installHud({ THREE, camera, spots, isBusy, onFrame }){
   function place(){
     if (!helpOn) return;
     if (isBusy()){ closeHelp(); return; }
-    const W = innerWidth, H = innerHeight;
+    const { w: W, h: H } = viewSize();
     // place, then nudge labels that would sit on top of each other
     const boxes = [];
     pins.forEach(({ el, p }) => {
@@ -121,6 +122,7 @@ export function installHud({ THREE, camera, spots, isBusy, onFrame }){
       <div class="set-row" data-s="push"><div><b>Notifications</b><i class="set-sub">checking…</i></div><button class="ui-btn primary set-act" hidden>Turn on</button></div>
       <div class="set-row" data-s="sound"><div><b>Sound effects</b><i>the light switch, the computer, the cork</i></div><button class="ui-btn set-act"></button></div>
       <div class="set-row" data-s="install"><div><b>Put it on your home screen</b><i class="set-sub"></i></div><button class="ui-btn set-act" hidden>Install</button></div>
+      <div class="set-row" data-s="cam"><div><b>Camera moves</b><i>glide to things, or a quick fade (easier on the eyes)</i></div><button class="ui-btn set-act"></button></div>
       <div class="set-row" data-s="cat"><div><b>Our cat</b><i>name, look, lock it in — or adopt one</i></div><button class="ui-btn set-act">Open</button></div>
       <div class="set-row" data-s="guide"><div><b>The guide</b><i>what everything in the room does</i></div><button class="ui-btn set-act">Show</button></div>` });
 
@@ -129,6 +131,13 @@ export function installHud({ THREE, camera, spots, isBusy, onFrame }){
     const paintSound = () => { sb.textContent = soundOn() ? 'On' : 'Off'; sb.classList.toggle('primary', soundOn()); };
     sb.addEventListener('click', () => { setSoundOn(!soundOn()); paintSound(); });
     paintSound();
+
+    // camera: glide or fade
+    const cb = el.querySelector('[data-s="cam"] .set-act');
+    const camNow = () => { try { const v = localStorage.getItem('ourroom_cam'); if (v) return v; } catch(_){} return matchMedia('(prefers-reduced-motion: reduce)').matches ? 'fade' : 'glide'; };
+    const paintCam = () => { cb.textContent = camNow() === 'fade' ? 'Fade' : 'Glide'; };
+    cb.addEventListener('click', () => { try { localStorage.setItem('ourroom_cam', camNow() === 'fade' ? 'glide' : 'fade'); } catch(_){} paintCam(); });
+    paintCam();
 
     el.querySelector('[data-s="cat"] .set-act').addEventListener('click', () => window.dispatchEvent(new CustomEvent('ourroom:cat-panel')));
     // guide

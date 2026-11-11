@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as sfx from './sfx.js';
+import { viewSize } from './view-size.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { initBookshelfUI, openBookshelf } from './bookshelf-ui.js';
@@ -98,7 +99,7 @@ export function initScene(userName){
   scene.background = DAY.bg.clone();
   scene.fog = new THREE.Fog(DAY.bg.getHex(), DAY.fogNear, DAY.fogFar);
 
-  const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.05, 220);
+  const camera = new THREE.PerspectiveCamera(42, viewSize().w / viewSize().h, 0.05, 220);
   camera.position.set(...ROOM.camera.pos);
 
   // alpha: the TV cuts a see-through hole in the canvas for the YouTube player
@@ -106,7 +107,7 @@ export function initScene(userName){
   // everything else.
   const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(viewSize().w, viewSize().h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -185,9 +186,19 @@ export function initScene(userName){
   const frameHooks = [];
   // one smooth glide at a time: from where the camera is to the goal, eased in and out
   let glide = null;
+  // ⚙ → "Camera moves": glide (smooth flight) or fade (dip to dark, cut, back) for anyone
+  // who finds camera motion hard on the eyes. Phones set to reduce motion start on fade.
+  const camMode = () => {
+    try { const v = localStorage.getItem('ourroom_cam'); if (v) return v; } catch(_){}
+    return matchMedia('(prefers-reduced-motion: reduce)').matches ? 'fade' : 'glide';
+  };
+  const fadeEl = document.createElement('div');
+  fadeEl.style.cssText = 'position:absolute;inset:0;background:#120a06;opacity:0;pointer-events:none;z-index:3';
+  wrap.appendChild(fadeEl);
   function startGlide(){
     const far = Math.max(camera.position.distanceTo(camPosGoal), controls.target.distanceTo(camTargetGoal));
-    glide = { pos: camera.position.clone(), target: controls.target.clone(), t: 0, dur: Math.min(1.7, 0.95 + far * 0.07) };
+    const fade = camMode() === 'fade';
+    glide = { pos: camera.position.clone(), target: controls.target.clone(), t: 0, fade, dur: fade ? 0.55 : Math.min(1.7, 0.95 + far * 0.07) };
   }
 
   function computeFocus(objects){
@@ -691,10 +702,12 @@ export function initScene(userName){
     localStorage.setItem('ourroom_guide_seen_v2', '1');
   });
 
-  addEventListener('resize', () => {
-    camera.aspect = innerWidth / innerHeight;
+  // only real size changes (not the phone's address bar sliding) re-shape the room: see view-size.js
+  window.addEventListener('ourroom:view', () => {
+    const { w, h } = viewSize();
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
+    renderer.setSize(w, h);
     fitOverview();                       // turning the phone sideways re-frames the room
   });
 
@@ -714,9 +727,18 @@ export function initScene(userName){
       if (!glide) startGlide();
       glide.t += dt;
       const u = Math.min(1, glide.t / glide.dur);
-      const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;      // ease in, ease out
-      camera.position.lerpVectors(glide.pos, camPosGoal, e);
-      controls.target.lerpVectors(glide.target, camTargetGoal, e);
+      if (glide.fade){
+        // dark for a moment, the camera jumps while it's dark, then light again: no motion at all
+        fadeEl.style.opacity = String(u < 0.4 ? u / 0.4 : 1 - (u - 0.4) / 0.6);
+        const e = u < 0.4 ? 0 : 1;
+        camera.position.lerpVectors(glide.pos, camPosGoal, e);
+        controls.target.lerpVectors(glide.target, camTargetGoal, e);
+        if (u >= 1) fadeEl.style.opacity = '0';
+      } else {
+        const e = u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;      // ease in, ease out
+        camera.position.lerpVectors(glide.pos, camPosGoal, e);
+        controls.target.lerpVectors(glide.target, camTargetGoal, e);
+      }
       camera.lookAt(controls.target);
       if (returning && u >= 1){
         returning = false;

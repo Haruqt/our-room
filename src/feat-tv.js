@@ -1,5 +1,6 @@
 import { CSS3DRenderer, CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
+import { viewSize } from './view-size.js';
 import { listVideos, addVideoFile, addYouTube, removeVideo, youTubeId, playableUrl, subscribe, listFrames, MAX_MEDIA_BYTES } from './room-data.js';
 import { getPcFolders, ensurePhotoSrc } from './books.js';
 import { quadInfo, fillQuadUV, frontView, loadImage, esc } from './room-kit.js';
@@ -93,7 +94,7 @@ export function installTv(ctx){
 
   /* ---- the YouTube layer, placed exactly on the screen ---- */
   const css = new CSS3DRenderer();
-  css.setSize(innerWidth, innerHeight);
+  css.setSize(viewSize().w, viewSize().h);
   css.domElement.className = 'tv-css3d';
   renderer.domElement.parentElement.insertBefore(css.domElement, renderer.domElement);
   const cssScene = new THREE.Scene();
@@ -107,7 +108,7 @@ export function installTv(ctx){
   ytObj.lookAt(info.center.clone().add(info.normal));
   ytObj.scale.setScalar(info.width / PX_W);
   cssScene.add(ytObj);
-  addEventListener('resize', () => css.setSize(innerWidth, innerHeight));
+  window.addEventListener('ourroom:view', () => css.setSize(viewSize().w, viewSize().h));
 
   /* ---- state ---- */
   const SAVED = 'ourroom_tv';

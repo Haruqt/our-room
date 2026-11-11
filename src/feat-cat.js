@@ -26,6 +26,7 @@ import { toast, showConfirm } from './ui.js';
 import { esc } from './room-kit.js';
 import * as sfx from './sfx.js';
 import { reportError } from './errors.js';
+import { viewSize } from './view-size.js';
 import { loadCatRig, COATS, EYE_TINTS } from './cat-rig.js';
 
 const did = key => window.dispatchEvent(new CustomEvent('ourroom:did', { detail: key }));
@@ -830,7 +831,8 @@ export function installCat(ctx){
       const visible = !document.body.classList.contains('in-pc') && !document.querySelector('.overlay-screen.show');
       (self.rig.head || root).getWorldPosition(v3); v3.y += 0.12;
       v3.project(camera);
-      const sx = (v3.x + 1) / 2 * innerWidth, sy = (1 - v3.y) / 2 * innerHeight;
+      const vs = viewSize();
+      const sx = (v3.x + 1) / 2 * vs.w, sy = (1 - v3.y) / 2 * vs.h;
       if (now > bubbleUntil || !visible || v3.z > 1) bubble.classList.remove('show');
       bubble.style.transform = `translate(${sx}px, ${sy}px)`;
       for (let i = hearts.length - 1; i >= 0; i--){
