@@ -312,9 +312,10 @@ const MOODS = [
   { id: 'sleep',  p: 0.2,  min: 240, max: 600 },
   { id: 'nap',    p: 0.17, min: 120, max: 300 },     // a loaf with heavy eyes
   { id: 'perch',  p: 0.22, min: 90,  max: 240 },     // up on something
-  { id: 'sit',    p: 0.2,  min: 45,  max: 120 },     // sit, groom, look around
-  { id: 'wander', p: 0.16, min: 25,  max: 60 },      // walk somewhere and stand
-  { id: 'zoom',   p: 0.05, min: 12,  max: 16 },      // the zoomies
+  { id: 'sit',    p: 0.18, min: 45,  max: 120 },     // sit, groom, look around
+  { id: 'wander', p: 0.13, min: 25,  max: 60 },      // walk somewhere and stand
+  { id: 'play',   p: 0.06, min: 20,  max: 50 },      // feels like playing with the yarn, all on its own
+  { id: 'zoom',   p: 0.04, min: 12,  max: 16 },      // the zoomies
 ];
 const hash = n => { let h = (n ^ 0x9e3779b9) >>> 0; h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0; h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 const seedOf = id => [...String(id)].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 17);
@@ -403,7 +404,7 @@ export function installCat(ctx){
     let jumpT = -1, jumpFrom = null, jumpDur = 0, jumpPhase = null;
     let extra = null, nextExtra = performance.now() + 9000 + index * 3000;
     let holdUntil = 0, faceCam = false;
-    let chasing = false, chaseAt = 0, playedAt = 0;
+    let chasing = false, chaseAt = 0, playedAt = 0, tryingSince = 0;
     self.target = null;                          // where its plan is taking it (so two cats don't pick the same spot)
 
     /* ---- its day, worked out from the clock: the same on both screens ----
@@ -457,6 +458,7 @@ export function installCat(ctx){
         case 'perch': { const n = free(PERCHES, r2); return { to: n, act: pick(PERCH[n].acts.filter(a => a !== 'sleep'), () => r3) || 'sit' }; }
         case 'sit': return { to: free(WANDER, r2), act: pick(['sit', 'sit', 'groom', 'loaf'], () => r3) };
         case 'zoom': return { to: free(WANDER, r2), act: 'zoom' };
+        case 'play': return { to: free(WANDER, r2), act: 'sit', play: true };
         default: return { to: free(WANDER, r2), act: 'stand' };
       }
     }
@@ -506,7 +508,8 @@ export function installCat(ctx){
       if (a === 'eat') Object.assign(T, { headPitch: 0.95, pitch: 0.12, y: -0.02, tailUp: 0.55 });
       if (a === 'walk') Object.assign(T, { tailUp: speed > 1 ? 0.3 : 0.65, headPitch: 0 });
       if (a === 'hiss') Object.assign(T, { arch: 1, puff: 1, ears: 1, tailUp: 1.2, headPitch: -0.1, y: 0.02 });
-      if (a === 'play') Object.assign(T, { crouch: 0.6, y: -0.04, headPitch: 0.35, tailUp: 0.8, ears: 0.1 });
+      if (a === 'play') Object.assign(T, { crouch: 0.45, y: -0.03, headPitch: 0.25, tailUp: 0.7, ears: 0.1 });
+      if (a === 'watch') Object.assign(T, SIT, { headPitch: 0.15, tailUp: 0.25, tailCurl: 0.5, ears: 0.15 });   // sitting, eyes on the ball
     }
     // the end of a pounce: a quick hop forward (if there's floor there)
     function pounceHop(){
@@ -659,49 +662,72 @@ export function installCat(ctx){
     self.update = function(t, dt, now){
       if (!R() || !root.visible || !self.rig) return;
 
-      // chasing the toy
-      const toyFresh = now < playUntil && bats < 3 + playing() * 3;      // more cats, longer games
+      // chasing the toy:
+      //  - when you or Che move it, every cat comes running (even sleepers wake up)
+      //  - on their own, a cat sometimes just feels like playing; others nearby may join in, or not
+      const seg0 = segmentAt(Date.now());
+      const night0 = nightAmount() > 0.5 && !lights;
+      const selfPlay = !night0 && seg0.mood === 'play';
+      const joinIn = !night0 && !selfPlay && act !== 'sleep' && act !== 'loaf' && !perch &&
+        slots.some(o => o !== self && o.rec && o.isChasing?.() && o.selfPlaying?.()) && hash(seg0.key * 31 + index) < 0.4;
+      self.selfPlaying = () => selfPlay;
+      const humanPlay = now < playUntil && bats < 4 + playing() * 3;      // more cats, longer games
+      const toyFresh = humanPlay || selfPlay || (joinIn && toyDistOK());
+      function toyDistOK(){ return Math.hypot(toy.x - pos.x, toy.z - pos.z) < 2.2; }
       const toyDist = Math.hypot(toy.x - pos.x, toy.z - pos.z);
       const hungryBusy = actName === 'eat' && bowlHasFood();
       if (toyFresh && !hungryBusy && act !== 'hiss' && purring <= 0 && !frozen){
-        // asleep, it only wakes up for a toy that lands close by
-        if (act !== 'sleep' || toyDist < 1.0){
-          if (!chasing){ chasing = true; holdUntil = 0; faceCam = false; extra = null; if (act === 'sleep') say('*one eye opens*', 1500); }
-          if (now - chaseAt > 380){
-            chaseAt = now;
-            // is it this cat's turn? (not if it batted last and others are playing too, or another cat is mid-pounce)
-            const up = nextUp(now);
-            const myTurn = (!up || up === self) && !(play.claim && play.claim !== self && now < play.claimUntil);
-            const want = myTurn ? 0.26 : 0.6;                  // its turn: right up to the ball; waiting: a polite distance, watching
-            if (toyDist > want + 0.12 || perch){
-              const was = path.length && path[path.length - 1];
-              const goal = { x: toy.x - (toy.x - pos.x) / (toyDist || 1) * want, z: toy.z - (toy.z - pos.z) / (toyDist || 1) * want };
-              if (!was || Math.hypot(was.x - goal.x, was.z - goal.z) > 0.15 || perch){
-                if (!(act === 'walk' && path[0]?.jump && jumpT >= 0)){      // don't change course mid-leap
-                  path = routeTo(pos, perch, goal);
-                  speed = 1.2 + Math.random() * 0.15; act = 'walk'; actName = 'play';
-                }
-              }
-            } else if (myTurn && toyDist <= 0.5 && now - playedAt > 900 && act !== 'walk'){
-              // close enough and its turn: pounce on it and bat it away
-              playedAt = now;
-              play.claim = self; play.claimUntil = now + 1400;
-              path = [{ x: pos.x + (toy.x - pos.x) * 0.5, z: pos.z + (toy.z - pos.z) * 0.5, y: 0, jump: true, small: true, perch: null }];
-              act = 'walk'; actName = 'play'; jumpT = -1;
-              setTimeout(() => batToy(self, pos), 380);
-            } else if (!myTurn && act === 'walk' && !path[0]?.jump && toyDist < 0.5){
-              path = []; act = actName = 'play';                // close enough: wait here
+        if (!chasing){
+          chasing = true; holdUntil = 0; faceCam = false; extra = null; tryingSince = now;
+          if (act === 'sleep') say('*one eye opens*', 1500);
+          else if (selfPlay && Math.random() < 0.6) say(pick(['*eyes the yarn*', 'the ball. it must be hunted.', '*wiggles*', 'play time'], Math.random), 2200);
+        }
+        if (now - chaseAt > 300){
+          chaseAt = now;
+          const up = nextUp(now);
+          const myTurn = (!up || up === self) && !(play.claim && play.claim !== self && now < play.claimUntil);
+          const want = myTurn ? 0.26 : 0.62;                  // its turn: right up to the ball; waiting: sits back and watches
+          const midLeap = jumpT >= 0 && path[0]?.jump;
+          if (myTurn && toyDist <= 0.5 && !perch && !midLeap && now - playedAt > 900){
+            // close enough and its turn: pounce on it and bat it away
+            playedAt = now; tryingSince = now;
+            play.claim = self; play.claimUntil = now + 1400;
+            const hx = pos.x + (toy.x - pos.x) * 0.5, hz = pos.z + (toy.z - pos.z) * 0.5;
+            path = !blocked(hx, hz) && clear(pos, { x: hx, z: hz }) ? [{ x: hx, z: hz, y: 0, jump: true, small: true, perch: null }] : [];
+            act = path.length ? 'walk' : 'play'; actName = 'play'; jumpT = -1;
+            const from = { x: pos.x, z: pos.z };
+            setTimeout(() => batToy(self, from), path.length ? 380 : 150);
+          } else if (myTurn && !perch && !midLeap && toyDist < 0.95 && now - tryingSince > 2500 && now - playedAt > 900){
+            // it's been trying for a while and can't get closer (the ball's tucked somewhere):
+            // a big pounce at it, swiping it back out into the room
+            playedAt = now; tryingSince = now;
+            play.claim = self; play.claimUntil = now + 1400;
+            path = []; act = actName = 'play'; jumpT = -1;
+            say(pick(['*big swipe*', 'come OUT', '*reaches*'], Math.random), 1300);
+            setTimeout(() => { pounceHop(); batToy(self, { x: pos.x, z: pos.z }, true); }, 250);
+          } else if (toyDist > want + 0.12 || perch){
+            const was = path.length && path[path.length - 1];
+            const goal = { x: toy.x - (toy.x - pos.x) / (toyDist || 1) * want, z: toy.z - (toy.z - pos.z) / (toyDist || 1) * want };
+            if ((!was || Math.hypot(was.x - goal.x, was.z - goal.z) > 0.15 || perch) && !midLeap){
+              path = routeTo(pos, perch, goal);
+              speed = 1.2 + Math.random() * 0.15; act = 'walk'; actName = myTurn ? 'play' : 'watch';
             }
+          } else if (!myTurn && !midLeap){
+            if (act !== 'watch'){ path = []; act = actName = 'watch'; }          // close enough: sit and watch for its turn
+            tryingSince = now;
+          } else if (act === 'walk' && !midLeap && !path.length){
+            act = actName = 'play';
           }
+          if (!myTurn) tryingSince = now;
         }
       } else if (chasing){
         chasing = false;
-        holdUntil = Date.now() + 30000;
-        if (act === 'play' || actName === 'play'){
+        holdUntil = Date.now() + (selfPlay ? 0 : 30000);
+        if (act === 'play' || actName === 'play' || act === 'watch' || actName === 'watch'){
           if (jumpT >= 0 && path[0]?.jump){ path = [path[0]]; actName = 'sit'; }
           else { act = actName = 'sit'; path = []; }
         }
-        if (Math.random() < 0.5) say(pick(['that was fun', '*proud*', '*pants*', 'again?'], Math.random), 2200);
+        if (Math.random() < 0.5) say(pick(['that was fun', '*proud*', '*pants*', 'again?', '*loses interest*'], Math.random), 2200);
       }
 
       // its plan changes when the stretch of its day changes (unless it's busy with you)
@@ -785,7 +811,7 @@ export function installCat(ctx){
       if (extra){ extra.t += dt; if (extra.t > extra.dur){ if (extra.kind === 'pounce') pounceHop(); extra = null; } }
       else if (now > nextExtra){
         nextExtra = now + 14000 + Math.random() * 16000;
-        const calm = act !== 'walk' && act !== 'eat' && act !== 'purr' && act !== 'hiss' && act !== 'sleep' && act !== 'play' && !chasing;
+        const calm = act !== 'walk' && act !== 'eat' && act !== 'purr' && act !== 'hiss' && act !== 'sleep' && act !== 'play' && act !== 'watch' && !chasing;
         if (calm){
           const opts = act === 'loaf' ? ['knead', 'yawn', 'look'] : act === 'stand' && !perch ? ['yawn', 'stretch', 'sniff', 'pounce', 'look'] : ['yawn', 'look', 'look'];
           const kind = pick(opts, Math.random);
@@ -1180,7 +1206,7 @@ export function installCat(ctx){
     S.toy = { x: +toy.x.toFixed(2), z: +toy.z.toFixed(2) };
     save();
   }
-  function startPlay(){ playUntil = performance.now() + 20000; bats = 0; play.startAt = performance.now(); }
+  function startPlay(){ playUntil = performance.now() + 30000; bats = 0; play.startAt = performance.now(); }
   window.addEventListener('pointerdown', e => {
     if (e.target !== renderer.domElement || !yarn.g.visible || document.body.classList.contains('room-focused')) return;
     pointerFloor(e);
@@ -1224,8 +1250,8 @@ export function installCat(ctx){
   window.addEventListener('pointerup', endDrag, { capture: true });
   window.addEventListener('pointercancel', endDrag, { capture: true });
   function tossToy(){
-    const a = Math.random() * Math.PI * 2;
-    toy.vx = Math.cos(a) * 1.6; toy.vz = Math.sin(a) * 1.6;
+    const a = openAngle(toy.x, toy.z, Math.random() * Math.PI * 2);
+    toy.vx = Math.cos(a) * 1.8; toy.vz = Math.sin(a) * 1.8;
     toy.moved = performance.now();
     startPlay();
     shareToy(true); setTimeout(saveToy, 2500);
@@ -1258,6 +1284,8 @@ export function installCat(ctx){
       yarn.ball.rotation.x += toy.vz * dt / 0.075;
       yarn.ball.rotation.z -= toy.vx * dt / 0.075;
     }
+    if (!toy.dragging && !toy.vx && !toy.vz && !restAt) restAt = performance.now();   // (also when it was dropped, not rolled)
+    if (toy.dragging || toy.vx || toy.vz) restAt = 0;
     // stopped against furniture or a wall where nobody can reach it: it rolls back out into the open
     if (!toy.dragging && ballOut(toy.x, toy.z)) unstick(0.3);          // dropped inside furniture: pop it out
     if (!toy.dragging && !toy.vx && !toy.vz && restAt && performance.now() - restAt > 700 && ballTucked(toy.x, toy.z)){
@@ -1292,9 +1320,10 @@ export function installCat(ctx){
     return best;
   }
   // a cat bats it away
-  function batToy(slot, from){
+  function batToy(slot, from, rescue = false){
     // bat it roughly away from the cat, but toward open floor (not straight into the sofa or a wall)
-    const ang = openAngle(toy.x, toy.z, Math.atan2(toy.z - from.z, toy.x - from.x) + (Math.random() - 0.5) * 1.4);
+    const ang = rescue ? openAngle(toy.x, toy.z, Math.atan2(SPOTS.middle.z - toy.z, SPOTS.middle.x - toy.x))
+                       : openAngle(toy.x, toy.z, Math.atan2(toy.z - from.z, toy.x - from.x) + (Math.random() - 0.5) * 1.4);
     const power = 1.1 + Math.random() * 1.3;
     toy.vx = Math.cos(ang) * power; toy.vz = Math.sin(ang) * power;
     toy.moved = performance.now();
@@ -1359,8 +1388,8 @@ export function installCat(ctx){
         const dx = toy.x - c.x, dz = toy.z - c.z, d = Math.hypot(dx, dz);
         if (d >= c.r + BALL || d === 0) continue;
         const nx = dx / d, nz = dz / d, over = c.r + BALL - d;
-        if (!blocked(toy.x + nx * over, toy.z + nz * over)){ toy.x += nx * over; toy.z += nz * over; }
-        toy.vx += nx * 0.5; toy.vz += nz * 0.5;
+        if (!ballOut(toy.x + nx * over, toy.z + nz * over)){ toy.x += nx * over; toy.z += nz * over; toy.vx += nx * 0.5; toy.vz += nz * 0.5; }
+        else s.push(-nx * over, -nz * over);                 // the ball's against something: the cat gives way instead of pinning it
       }
     }
   }
