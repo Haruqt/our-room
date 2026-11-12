@@ -682,7 +682,7 @@ export function installCat(ctx){
                   speed = 1.2 + Math.random() * 0.15; act = 'walk'; actName = 'play';
                 }
               }
-            } else if (myTurn && toyDist <= 0.4 && now - playedAt > 900 && act !== 'walk'){
+            } else if (myTurn && toyDist <= 0.5 && now - playedAt > 900 && act !== 'walk'){
               // close enough and its turn: pounce on it and bat it away
               playedAt = now;
               play.claim = self; play.claimUntil = now + 1400;
@@ -1231,28 +1231,71 @@ export function installCat(ctx){
     shareToy(true); setTimeout(saveToy, 2500);
     did('cat-play');
   }
+  // the ball can't go into furniture or through the walls
+  const ballOut = (x, z) => blocked(x, z) || x < BOUNDS[0] + 0.1 || x > BOUNDS[1] - 0.1 || z < BOUNDS[2] + 0.1 || z > BOUNDS[3] - 0.1;
+  // tucked against something, where a cat can't get at it?
+  const ballTucked = (x, z) => [0, 1, 2, 3, 4, 5, 6, 7].some(i => ballOut(x + Math.cos(i * Math.PI / 4) * 0.2, z + Math.sin(i * Math.PI / 4) * 0.2));
+  let restAt = 0;
   function rollToy(dt){
     const sp = Math.hypot(toy.vx, toy.vz);
     if (!toy.dragging && sp > 0.01){
-      const nx = toy.x + toy.vx * dt, nz = toy.z + toy.vz * dt;
-      const out = (x, z) => blocked(x, z) || x < BOUNDS[0] + 0.1 || x > BOUNDS[1] - 0.1 || z < BOUNDS[2] + 0.1 || z > BOUNDS[3] - 0.1;
-      if (!out(nx, nz)){ toy.x = nx; toy.z = nz; }
-      else {
-        if (out(nx, toy.z)) toy.vx *= -0.6;
-        if (out(toy.x, nz)) toy.vz *= -0.6;
+      // small sub-steps so a fast ball bounces off things instead of sticking to them
+      const n = Math.max(1, Math.ceil(sp * dt / 0.03)), h = dt / n;
+      for (let i = 0; i < n; i++){
+        const nx = toy.x + toy.vx * h, nz = toy.z + toy.vz * h;
+        if (!ballOut(nx, nz)){ toy.x = nx; toy.z = nz; continue; }
+        // bounce: lively, with a little random spin so it doesn't ping back and forth in a corner
+        const hitX = ballOut(nx, toy.z), hitZ = ballOut(toy.x, nz);
+        if (hitX || !hitZ) toy.vx *= -0.82;
+        if (hitZ || !hitX) toy.vz *= -0.82;
+        const a = (Math.random() - 0.5) * 0.5, c = Math.cos(a), s2 = Math.sin(a);
+        [toy.vx, toy.vz] = [toy.vx * c - toy.vz * s2, toy.vx * s2 + toy.vz * c];
+        if (ballOut(toy.x, toy.z)) unstick();
       }
-      const f = Math.exp(-1.7 * dt); toy.vx *= f; toy.vz *= f;
-      if (Math.hypot(toy.vx, toy.vz) < 0.03){ toy.vx = toy.vz = 0; }
+      const f = Math.exp(-1.1 * dt); toy.vx *= f; toy.vz *= f;           // rolls further before it stops
+      if (Math.hypot(toy.vx, toy.vz) < 0.03){ toy.vx = toy.vz = 0; restAt = performance.now(); }
       toy.moved = performance.now();
       yarn.ball.rotation.x += toy.vz * dt / 0.075;
       yarn.ball.rotation.z -= toy.vx * dt / 0.075;
     }
+    // stopped against furniture or a wall where nobody can reach it: it rolls back out into the open
+    if (!toy.dragging && ballOut(toy.x, toy.z)) unstick(0.3);          // dropped inside furniture: pop it out
+    if (!toy.dragging && !toy.vx && !toy.vz && restAt && performance.now() - restAt > 700 && ballTucked(toy.x, toy.z)){
+      restAt = 0; unstick(0.55);
+    }
     yarn.g.position.set(toy.x, FLOOR, toy.z);
+  }
+  // roll the ball toward open floor
+  function unstick(power = 0){
+    const ang = openAngle(toy.x, toy.z, Math.atan2(SPOTS.middle.z - toy.z, SPOTS.middle.x - toy.x));
+    if (ballOut(toy.x, toy.z)){        // somehow inside something: hop to the nearest clear spot
+      found: for (let r = 0.05; r < 2.5; r += 0.05){
+        for (let i = 0; i < 16; i++){
+          const a = ang + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8;
+          const x = toy.x + Math.cos(a) * r, z = toy.z + Math.sin(a) * r;
+          if (!ballOut(x, z)){ toy.x = x; toy.z = z; break found; }
+        }
+      }
+    }
+    if (power){ toy.vx = Math.cos(ang) * power; toy.vz = Math.sin(ang) * power; toy.moved = performance.now(); }
+  }
+  // the direction near `want` with the most open floor ahead
+  function openAngle(x, z, want){
+    let best = want, bestRun = -1;
+    for (let i = 0; i < 16; i++){
+      const a = want + (i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI / 8;
+      let run = 0;
+      while (run < 1.2 && !ballOut(x + Math.cos(a) * (run + 0.08), z + Math.sin(a) * (run + 0.08))) run += 0.08;
+      const score = run - Math.abs(Math.ceil(i / 2)) * 0.06;            // prefer close to what it wanted
+      if (score > bestRun){ bestRun = score; best = a; }
+    }
+    return best;
   }
   // a cat bats it away
   function batToy(slot, from){
-    const ang = Math.atan2(toy.z - from.z, toy.x - from.x) + (Math.random() - 0.5) * 1.6;
-    const power = 0.9 + Math.random() * 1.2;
+    // bat it roughly away from the cat, but toward open floor (not straight into the sofa or a wall)
+    const ang = openAngle(toy.x, toy.z, Math.atan2(toy.z - from.z, toy.x - from.x) + (Math.random() - 0.5) * 1.4);
+    const power = 1.1 + Math.random() * 1.3;
     toy.vx = Math.cos(ang) * power; toy.vz = Math.sin(ang) * power;
     toy.moved = performance.now();
     bats++;
