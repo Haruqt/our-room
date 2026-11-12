@@ -336,6 +336,10 @@ export function installCat(ctx){
   bed.g.position.set(BED.x, FLOOR, BED.z); bed.g.rotation.y = 0.3;
   const toy = { x: 0.75, z: 0.3, vx: 0, vz: 0, moved: 0, dragging: false, sentAt: 0 };
   let playUntil = 0, bats = 0;              // a play session: started by you moving the toy, over after a few bats
+  // taking turns: whoever just batted the ball waits while the others get a go, and a cat
+  // that's pouncing "claims" the ball for a moment so two don't pounce at once
+  const play = { last: null, lastAt: 0, claim: null, claimUntil: 0 };
+  const playing = () => slots.filter(s => s.rec && s.isChasing?.()).length;
 
   /* ---- the shared record: { list: [cat, …], fedAt, fedBy, toy } ---- */
   let S = { list: [], fedAt: 0 };
@@ -643,31 +647,36 @@ export function installCat(ctx){
       if (!R() || !root.visible || !self.rig) return;
 
       // chasing the toy
-      const toyFresh = now < playUntil && bats < 5;
+      const toyFresh = now < playUntil && bats < 3 + playing() * 3;      // more cats, longer games
       const toyDist = Math.hypot(toy.x - pos.x, toy.z - pos.z);
       const hungryBusy = actName === 'eat' && bowlHasFood();
       if (toyFresh && !hungryBusy && act !== 'hiss' && purring <= 0 && !frozen){
         // asleep, it only wakes up for a toy that lands close by
         if (act !== 'sleep' || toyDist < 1.0){
           if (!chasing){ chasing = true; holdUntil = 0; faceCam = false; extra = null; if (act === 'sleep') say('*one eye opens*', 1500); }
-          if (now - chaseAt > 380 + index * 60){
+          if (now - chaseAt > 380){
             chaseAt = now;
-            if (toyDist > 0.32 || perch){
+            // is it this cat's turn? (not if it batted last and others are playing too, or another cat is mid-pounce)
+            const myTurn = (play.last !== self || playing() <= 1 || now - play.lastAt > 4500) && !(play.claim && play.claim !== self && now < play.claimUntil);
+            const want = myTurn ? 0.26 : 0.6;                  // its turn: right up to the ball; waiting: a polite distance, watching
+            if (toyDist > want + 0.12 || perch){
               const was = path.length && path[path.length - 1];
-              if (!was || Math.hypot(was.x - toy.x, was.z - toy.z) > 0.15 || perch){
+              const goal = { x: toy.x - (toy.x - pos.x) / (toyDist || 1) * want, z: toy.z - (toy.z - pos.z) / (toyDist || 1) * want };
+              if (!was || Math.hypot(was.x - goal.x, was.z - goal.z) > 0.15 || perch){
                 if (!(act === 'walk' && path[0]?.jump && jumpT >= 0)){      // don't change course mid-leap
-                  // the others hang back a little, so they don't all pile onto it
-                  const back = 0.22 + index * 0.12;
-                  path = routeTo(pos, perch, { x: toy.x - (toy.x - pos.x) / (toyDist || 1) * back, z: toy.z - (toy.z - pos.z) / (toyDist || 1) * back });
-                  speed = 1.3 - index * 0.1; act = 'walk'; actName = 'play';
+                  path = routeTo(pos, perch, goal);
+                  speed = 1.2 + Math.random() * 0.15; act = 'walk'; actName = 'play';
                 }
               }
-            } else if (now - playedAt > 900 && act !== 'walk'){
-              // close enough: pounce on it and bat it away
+            } else if (myTurn && toyDist <= 0.4 && now - playedAt > 900 && act !== 'walk'){
+              // close enough and its turn: pounce on it and bat it away
               playedAt = now;
+              play.claim = self; play.claimUntil = now + 1400;
               path = [{ x: pos.x + (toy.x - pos.x) * 0.5, z: pos.z + (toy.z - pos.z) * 0.5, y: 0, jump: true, small: true, perch: null }];
               act = 'walk'; actName = 'play'; jumpT = -1;
               setTimeout(() => batToy(self, pos), 380);
+            } else if (!myTurn && act === 'walk' && !path[0]?.jump && toyDist < 0.5){
+              path = []; act = actName = 'play';                // close enough: wait here
             }
           }
         }
@@ -848,6 +857,17 @@ export function installCat(ctx){
       }
     };
     self.talking = () => bubble.classList.contains('show');
+    self.isChasing = () => chasing;
+    // its body, for bumping into the other cats and the ball: two circles along its spine
+    self.body = () => ({ pos, y: posY, heading, airborne: jumpT >= 0, perch });
+    self.push = (dx, dz) => {
+      if (jumpT >= 0 || perch) return;
+      const stuck = blocked(pos.x, pos.z);          // already tucked against furniture: let it slide out
+      const ok = (x, z) => stuck || !blocked(x, z);
+      if (ok(pos.x + dx, pos.z + dz)){ pos.x += dx; pos.z += dz; }
+      else if (ok(pos.x + dx, pos.z)) pos.x += dx;  // slide along the furniture
+      else if (ok(pos.x, pos.z + dz)) pos.z += dz;
+    };
 
     self.label = () => {
       const r = R(); if (!r) return null;
@@ -1216,6 +1236,8 @@ export function installCat(ctx){
     toy.vx = Math.cos(ang) * power; toy.vz = Math.sin(ang) * power;
     toy.moved = performance.now();
     bats++;
+    play.last = slot; play.lastAt = performance.now(); play.claim = null;
+    window.__ourroomCat?.batLog.push(slot.rec?.name);
     sfx.pop();
     if (Math.random() < 0.35) slot.say(pick(['*bap*', 'gotcha!', '*pounce*', 'mine!!', '*tail flick*'], Math.random), 1300);
   }
@@ -1235,7 +1257,45 @@ export function installCat(ctx){
     rollToy(dt);
     bowl.food.visible = !!bowlHasFood();
     for (const s of slots) s.update(t, dt, now);
+    collide(dt);
   });
+
+  /* ---- bodies: cats don't walk through each other, and bump the ball ---- */
+  const R = 0.11 * CAT_SCALE / 0.85, SPINE = 0.13 * CAT_SCALE / 0.85, BALL = 0.075;
+  const circles = b => {
+    const fx = Math.sin(b.heading) * SPINE, fz = Math.cos(b.heading) * SPINE;
+    return [{ x: b.pos.x + fx, z: b.pos.z + fz }, { x: b.pos.x - fx, z: b.pos.z - fz }];
+  };
+  function collide(dt){
+    const live = slots.filter(s => s.rec && s.root.visible && s.body);
+    // cat against cat (only on the same level, and never mid-leap)
+    for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++){
+      const A = live[i].body(), B = live[j].body();
+      if (A.airborne || B.airborne || Math.abs(A.y - B.y) > 0.15) continue;
+      let best = null;
+      for (const a of circles(A)) for (const b of circles(B)){
+        const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz);
+        if (d < R * 2 && (!best || d < best.d)) best = { dx, dz, d };
+      }
+      if (!best) continue;
+      const over = R * 2 - best.d, nx = best.d ? best.dx / best.d : 1, nz = best.d ? best.dz / best.d : 0;
+      const k = Math.min(over, 0.9 * dt + over * 0.6);          // ease them apart quickly, no snapping
+      live[i].push(nx * k / 2, nz * k / 2);
+      live[j].push(-nx * k / 2, -nz * k / 2);
+    }
+    // cat against ball: the ball gets nudged out of the way (so it can never be trapped)
+    if (!toy.dragging) for (const s of live){
+      const B = s.body();
+      if (B.airborne || B.y > 0.05) continue;
+      for (const c of circles(B)){
+        const dx = toy.x - c.x, dz = toy.z - c.z, d = Math.hypot(dx, dz);
+        if (d >= R + BALL || d === 0) continue;
+        const nx = dx / d, nz = dz / d, over = R + BALL - d;
+        if (!blocked(toy.x + nx * over, toy.z + nz * over)){ toy.x += nx * over; toy.z += nz * over; }
+        toy.vx += nx * 0.5; toy.vz += nz * 0.5;
+      }
+    }
+  }
 
   // for testing: the first cat, plus every slot
   window.__ourroomCat = {
@@ -1248,6 +1308,9 @@ export function installCat(ctx){
     pet: () => slots[0].pet(), feed, route,
     screenSpot: () => nearestToScreen(),
     adopt: (name, coat, owner = me) => { const rec = { ...blankCat(), name, owner, look: { ...randomLook(), coat } }; S = { ...S, list: [...(S.list || []), rec] }; save(); sync(); slotOf(rec.id)?.arrive(false); },
+    toss: (x, z, vx = 0, vz = 0) => { toy.x = x; toy.z = z; toy.vx = vx; toy.vz = vz; startPlay(); },
+    batLog: [],
+    bodies: () => slots.filter(s => s.rec).map(s => { const b = s.body(); return { x: b.pos.x, z: b.pos.z, y: b.y, h: b.heading, air: b.airborne }; }),
     probe(x, z){ const rc = new THREE.Raycaster(new THREE.Vector3(x, 5, z), new THREE.Vector3(0, -1, 0)); const h = rc.intersectObject(roomModel, true)[0]; return h ? +h.point.y.toFixed(3) : null; },
   };
 
