@@ -338,7 +338,16 @@ export function installCat(ctx){
   let playUntil = 0, bats = 0;              // a play session: started by you moving the toy, over after a few bats
   // taking turns: whoever just batted the ball waits while the others get a go, and a cat
   // that's pouncing "claims" the ball for a moment so two don't pounce at once
-  const play = { last: null, lastAt: 0, claim: null, claimUntil: 0 };
+  const play = { last: null, lastAt: 0, claim: null, claimUntil: 0, batAt: new Map(), startAt: 0 };
+  // whose go is it? the playing cat that's waited longest (never-batted first), so everyone gets a turn
+  function nextUp(now){
+    const ch = slots.filter(s => s.rec && s.isChasing?.());
+    if (ch.length <= 1) return ch[0] || null;
+    if (now - Math.max(play.lastAt, play.startAt) > 7000) return null;      // nobody's managed it for a while: free for all
+    const pool = ch.filter(s => s !== play.last);
+    pool.sort((a, b) => (play.batAt.get(a) || 0) - (play.batAt.get(b) || 0) || a.toyDist() - b.toyDist());
+    return pool[0];
+  }
   const playing = () => slots.filter(s => s.rec && s.isChasing?.()).length;
 
   /* ---- the shared record: { list: [cat, …], fedAt, fedBy, toy } ---- */
@@ -607,6 +616,8 @@ export function installCat(ctx){
     /* ---- being called: come to the floor nearest your screen, and look at you ---- */
     self.comeTo = function(p){
       chasing = false;
+      self.dest = { x: p.x, z: p.z };
+      self.calledAt = Date.now();
       goTo(p, 'sit');
       speed = 0.75;
       faceCam = true;
@@ -624,10 +635,12 @@ export function installCat(ctx){
       act = actName = 'stand';
       root.visible = true;
       holdUntil = Date.now() + 20000;
+      const arrivedAt = Date.now(); self.calledAt = 0;
       setTimeout(() => {
         meow({ pitch: 1.25, len: 0.4 });
         say(`hi. i’m ${R()?.name || 'new here'}.`, 3600, 'love');
-        setTimeout(() => goTo(fromBox ? 'rug' : 'middle', 'sit'), 1600);
+        // (unless you've already called it over, or it's off after the toy)
+        setTimeout(() => { if (self.calledAt < arrivedAt && !chasing) goTo(fromBox ? 'rug' : 'middle', 'sit'); }, 1600);
         after && after();
       }, fromBox ? 900 : 300);
     };
@@ -657,7 +670,8 @@ export function installCat(ctx){
           if (now - chaseAt > 380){
             chaseAt = now;
             // is it this cat's turn? (not if it batted last and others are playing too, or another cat is mid-pounce)
-            const myTurn = (play.last !== self || playing() <= 1 || now - play.lastAt > 4500) && !(play.claim && play.claim !== self && now < play.claimUntil);
+            const up = nextUp(now);
+            const myTurn = (!up || up === self) && !(play.claim && play.claim !== self && now < play.claimUntil);
             const want = myTurn ? 0.26 : 0.6;                  // its turn: right up to the ball; waiting: a polite distance, watching
             if (toyDist > want + 0.12 || perch){
               const was = path.length && path[path.length - 1];
@@ -858,6 +872,9 @@ export function installCat(ctx){
     };
     self.talking = () => bubble.classList.contains('show');
     self.isChasing = () => chasing;
+    self.toyDist = () => Math.hypot(toy.x - pos.x, toy.z - pos.z);
+    self.moving = () => act === 'walk' && path.length > 0;
+    self.spot = () => (self.dest && Date.now() < holdUntil) ? self.dest : pos;     // where it is (or is heading when called)
     // its body, for bumping into the other cats and the ball: two circles along its spine
     self.body = () => ({ pos, y: posY, heading, airborne: jumpT >= 0, perch });
     self.push = (dx, dz) => {
@@ -1066,14 +1083,16 @@ export function installCat(ctx){
     body.querySelector('[data-a="call"]')?.addEventListener('click', () => {
       if (!slot) return;
       if (me === 'andrei' && rec.owner !== 'andrei' && Math.random() < 0.3){ slot.say('*pretends not to hear Andrei*', 2600); closePanel(); return; }
-      const p = nearestToScreen();
+      const p = nearestToScreen(slot);
       slot.comeTo(p);
       send('cat', { t: 'call', id: rec.id, x: p.x, z: p.z });
       closePanel();
     });
   }
   /** The clear bit of floor closest to your screen that you can see right now. */
-  function nearestToScreen(){
+  function nearestToScreen(forSlot){
+    // the other cats (and where called cats are headed), so each called cat gets its own patch of floor
+    const taken = slots.filter(s => s.rec && s !== forSlot && s.root.visible && s.spot).map(s => s.spot());
     const v = new THREE.Vector3();
     const cx = camera.position.x, cz = camera.position.z;
     let best = null, bestD = Infinity;
@@ -1084,6 +1103,7 @@ export function installCat(ctx){
         if (v.z > 1 || Math.abs(v.x) > 0.7 || v.y < -0.75 || v.y > 0.6) continue;
         const d = Math.hypot(x - cx, z - cz);
         if (d < 0.9) continue;
+        if (taken.some(q => Math.hypot(q.x - x, q.z - z) < 0.42)) continue;
         if (d < bestD){ bestD = d; best = { x, z }; }
       }
     }
@@ -1160,7 +1180,7 @@ export function installCat(ctx){
     S.toy = { x: +toy.x.toFixed(2), z: +toy.z.toFixed(2) };
     save();
   }
-  function startPlay(){ playUntil = performance.now() + 20000; bats = 0; }
+  function startPlay(){ playUntil = performance.now() + 20000; bats = 0; play.startAt = performance.now(); }
   window.addEventListener('pointerdown', e => {
     if (e.target !== renderer.domElement || !yarn.g.visible || document.body.classList.contains('room-focused')) return;
     pointerFloor(e);
@@ -1236,7 +1256,7 @@ export function installCat(ctx){
     toy.vx = Math.cos(ang) * power; toy.vz = Math.sin(ang) * power;
     toy.moved = performance.now();
     bats++;
-    play.last = slot; play.lastAt = performance.now(); play.claim = null;
+    play.last = slot; play.lastAt = performance.now(); play.claim = null; play.batAt.set(slot, play.lastAt);
     window.__ourroomCat?.batLog.push(slot.rec?.name);
     sfx.pop();
     if (Math.random() < 0.35) slot.say(pick(['*bap*', 'gotcha!', '*pounce*', 'mine!!', '*tail flick*'], Math.random), 1300);
@@ -1262,9 +1282,11 @@ export function installCat(ctx){
 
   /* ---- bodies: cats don't walk through each other, and bump the ball ---- */
   const R = 0.11 * CAT_SCALE / 0.85, SPINE = 0.13 * CAT_SCALE / 0.85, BALL = 0.075;
+  // the body: hips, chest, and the head poking out in front (so they don't bump noses)
+  const SHAPE = [[-SPINE, R], [SPINE, R], [SPINE + 0.14 * CAT_SCALE / 0.85, 0.075 * CAT_SCALE / 0.85]];
   const circles = b => {
-    const fx = Math.sin(b.heading) * SPINE, fz = Math.cos(b.heading) * SPINE;
-    return [{ x: b.pos.x + fx, z: b.pos.z + fz }, { x: b.pos.x - fx, z: b.pos.z - fz }];
+    const sx = Math.sin(b.heading), sz = Math.cos(b.heading);
+    return SHAPE.map(([o, r]) => ({ x: b.pos.x + sx * o, z: b.pos.z + sz * o, r }));
   };
   function collide(dt){
     const live = slots.filter(s => s.rec && s.root.visible && s.body);
@@ -1274,14 +1296,17 @@ export function installCat(ctx){
       if (A.airborne || B.airborne || Math.abs(A.y - B.y) > 0.15) continue;
       let best = null;
       for (const a of circles(A)) for (const b of circles(B)){
-        const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz);
-        if (d < R * 2 && (!best || d < best.d)) best = { dx, dz, d };
+        const dx = a.x - b.x, dz = a.z - b.z, d = Math.hypot(dx, dz), over = a.r + b.r - d;
+        if (over > 0 && (!best || over > best.over)) best = { dx, dz, d, over };
       }
       if (!best) continue;
-      const over = R * 2 - best.d, nx = best.d ? best.dx / best.d : 1, nz = best.d ? best.dz / best.d : 0;
-      const k = Math.min(over, 0.9 * dt + over * 0.6);          // ease them apart quickly, no snapping
-      live[i].push(nx * k / 2, nz * k / 2);
-      live[j].push(-nx * k / 2, -nz * k / 2);
+      const nx = best.d ? best.dx / best.d : 1, nz = best.d ? best.dz / best.d : 0;
+      const k = Math.min(best.over, 0.9 * dt + best.over * 0.6);    // ease them apart quickly, no snapping
+      // whoever is walking steps around whoever is sitting still (a settled cat doesn't get shoved)
+      const mi = live[i].moving(), mj = live[j].moving();
+      const wi = mi === mj ? 0.5 : (mi ? 1 : 0);
+      live[i].push(nx * k * wi, nz * k * wi);
+      live[j].push(-nx * k * (1 - wi), -nz * k * (1 - wi));
     }
     // cat against ball: the ball gets nudged out of the way (so it can never be trapped)
     if (!toy.dragging) for (const s of live){
@@ -1289,8 +1314,8 @@ export function installCat(ctx){
       if (B.airborne || B.y > 0.05) continue;
       for (const c of circles(B)){
         const dx = toy.x - c.x, dz = toy.z - c.z, d = Math.hypot(dx, dz);
-        if (d >= R + BALL || d === 0) continue;
-        const nx = dx / d, nz = dz / d, over = R + BALL - d;
+        if (d >= c.r + BALL || d === 0) continue;
+        const nx = dx / d, nz = dz / d, over = c.r + BALL - d;
         if (!blocked(toy.x + nx * over, toy.z + nz * over)){ toy.x += nx * over; toy.z += nz * over; }
         toy.vx += nx * 0.5; toy.vz += nz * 0.5;
       }
@@ -1307,6 +1332,7 @@ export function installCat(ctx){
     free: () => slots.forEach(s => s.debug.free()),
     pet: () => slots[0].pet(), feed, route,
     screenSpot: () => nearestToScreen(),
+    call: i => { const sl = slots.filter(s => s.rec)[i]; const p = nearestToScreen(sl); sl.comeTo(p); return p; },
     adopt: (name, coat, owner = me) => { const rec = { ...blankCat(), name, owner, look: { ...randomLook(), coat } }; S = { ...S, list: [...(S.list || []), rec] }; save(); sync(); slotOf(rec.id)?.arrive(false); },
     toss: (x, z, vx = 0, vz = 0) => { toy.x = x; toy.z = z; toy.vx = vx; toy.vz = vz; startPlay(); },
     batLog: [],
